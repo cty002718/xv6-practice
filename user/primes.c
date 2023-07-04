@@ -2,53 +2,53 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
+void new_proc(int p[2]) {
+    int prime;
+    int n;
+
+    // close the write
+    close(p[1]);
+    if (read(p[0], &prime, 4) != 4) {
+        fprintf(2, "Error in read.\n");
+        exit(1);
+    }
+    printf("prime %d\n", prime);
+    if (read(p[0], &n, 4) == 4) {
+        int newfd[2];
+        pipe(newfd);
+
+        if (fork() != 0) {
+            close(newfd[0]);
+            if (n % prime) write(newfd[1], &n, 4);
+            while (read(p[0], &n, 4) == 4) {
+                if (n % prime) write(newfd[1], &n, 4);
+            }
+            close(p[0]);
+            close(newfd[1]);
+            wait(0);
+        } else {
+            new_proc(newfd);
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
-    int left_pipe[2];
-    int right_pipe[2];
-    int pid;
-    int has_child = 1;
-    pipe(right_pipe);
+    int p[2];
+    pipe(p);
 
     if (fork() == 0) {
-        close(right_pipe[1]);
-        left_pipe[0] = right_pipe[0];
-
-        int input;
-        int n = -1;
-        has_child = 0;
-        while (read(left_pipe[0], &input, 1) != 0) {
-            if (n == -1) {
-                n = input;
-                printf("prime %d\n", n);
-            } else if (input % n != 0) {
-                if (has_child == 0) {
-                    pipe(right_pipe);
-                    if (fork() == 0) {
-                        close(left_pipe[0]);
-                        close(right_pipe[1]);
-                        left_pipe[0] = right_pipe[0];
-                        n = -1;
-                    } else {
-                        close(right_pipe[0]);
-                        has_child = 1;
-                        write(right_pipe[1], &input, 1);
-                    }
-                } else {
-                    write(right_pipe[1], &input, 1);
-                }
+        new_proc(p);
+    } else { // init process (generator)
+        close(p[0]);
+        for (int i = 2; i <= 35; ++i) {
+            if (write(p[1], &i, 4) != 4) {
+                fprintf(2, "failed write %d into the pipe\n", i);
+                exit(1);
             }
         }
-    } else { // init process (generator)
-        close(right_pipe[0]);
-        for (int i = 2; i <= 35; ++i) {
-            write(right_pipe[1], &i, 1);
-        }
+        close(p[1]);
+        wait(0);
+        exit(0);
     }
-
-    if (has_child == 1) {
-        close(right_pipe[1]);
-        wait(&pid);
-    }
-    
-    exit(0);
+    return 0;
 }
