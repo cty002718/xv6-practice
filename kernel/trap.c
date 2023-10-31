@@ -77,8 +77,18 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2) {
+    struct proc* proc = myproc();
+    if (proc->alarm_ticks && proc->have_return) {
+      if (++proc->acc_ticks == proc->alarm_ticks) {
+        proc->saved_trapframe = *p->trapframe;
+        proc->trapframe->epc = proc->handler_va;
+        proc->acc_ticks = 0;
+        proc->have_return = 0;
+      }
+    }
     yield();
+  }
 
   usertrapret();
 }
